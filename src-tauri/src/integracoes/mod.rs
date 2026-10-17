@@ -25,11 +25,13 @@ pub struct Item {
     pub icone: Option<String>,
 }
 
-pub mod apps;
-pub mod sistemas;
-pub mod lembretes;
 pub mod adp;
+pub mod apps;
+pub mod github;
+pub mod lembretes;
 pub mod sidecar;
+pub mod sistemas;
+pub mod whatsapp;
 
 pub fn todos_manifestos() -> Vec<Manifesto> {
     let mut v = vec![
@@ -37,6 +39,8 @@ pub fn todos_manifestos() -> Vec<Manifesto> {
         sistemas::manifesto(),
         lembretes::manifesto(),
         adp::manifesto(),
+        github::manifesto(),
+        whatsapp::manifesto(),
     ];
     v.sort_by_key(|m| m.ordem);
     v
@@ -52,6 +56,10 @@ pub fn executar(
         "sistemas" => sistemas::executar(comando, args),
         "lembretes" => lembretes::executar(comando, args),
         "adp" => adp::executar(comando, args),
+        "github" => github::executar(comando, args),
+        "whatsapp" => whatsapp::executar(comando, args),
         _ => Err(format!("integração desconhecida: {}", integracao)),
     }
 }
+
+pub mod ia; // Adicione esta linha

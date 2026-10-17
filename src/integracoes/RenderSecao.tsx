@@ -1,5 +1,7 @@
 import RenderLembretes from "./RenderLembretes";
 import RenderADP from "./RenderADP";
+import RenderGitHub from "./RenderGitHub";
+import RenderWhatsApp from "./RenderWhatsApp";
 
 type Item = {
     id: string;
@@ -64,6 +66,14 @@ export default function RenderSecao({
 
     if (secao.tipo === "adp") {
         return <RenderADP />;
+    }
+
+    if (secao.tipo === "github") {
+        return <RenderGitHub />;
+    }
+
+    if (secao.tipo === "whatsapp") {
+        return <RenderWhatsApp />;
     }
 
     return null;
