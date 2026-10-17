@@ -538,8 +538,13 @@ fn center_window_on_primary(window: &tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Procura o .env na raiz do projeto (um nível acima do src-tauri)
+    let root_env = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".env");
+    let _ = dotenvy::from_path(root_env);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             get_system_info,
             set_window_size,
@@ -563,18 +568,28 @@ pub fn run() {
             adp_espelho,
             adp_fechar,
             adp_validar_ponto,
-            adp_bater_ponto
+            adp_bater_ponto,
+            integracoes::github::github_iniciar_login,
+            integracoes::github::github_aguardar_login,
+            integracoes::github::github_status,
+            integracoes::github::github_perfil,
+            integracoes::github::github_sair,
+            integracoes::github::github_repo,
+            integracoes::github::github_commits,
+            integracoes::github::github_prs,
+            integracoes::github::github_issues,
+            integracoes::whatsapp::whatsapp_config_get,
+            integracoes::whatsapp::whatsapp_config_set,
+            integracoes::whatsapp::whatsapp_status,
+            integracoes::whatsapp::whatsapp_enviar_teste,
+            integracoes::ia::testar_ia,
+            open_external,
         ])
         .setup(|app| {
             if let Some(win) = app.get_webview_window("lua") {
                 center_window_on_primary(&win);
                 let _ = win.show();
                 let _ = win.set_focus();
-                let win_clone = win.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(1000));
-                    let _ = win_clone.set_focusable(false);
-                });
             }
             if let Err(e) = integracoes::sidecar::subir() {
                 eprintln!("[sidecar] não subiu: {}", e);
@@ -588,4 +603,22 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("erro ao rodar Lua");
+}
+
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        open::that(url).map_err(|e| e.to_string())
+    }
 }

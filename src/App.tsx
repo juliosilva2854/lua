@@ -63,6 +63,13 @@ type AdpStatus = {
   timer_almoco_min?: number;
 };
 
+type WhatsStatus = {
+  conectado: boolean;
+  status: string;
+  numero: string | null;
+  nome: string | null;
+};
+
 type Modo = "colapsada" | "home" | "secao";
 type Modal = "chat" | "add" | "config" | null;
 
@@ -74,20 +81,22 @@ const DISCO_ALERTA = 85;
 const DISCO_CRITICO = 95;
 
 const SIZE_COLAPSADA = { w: 420, h: 40 };
-const SIZE_HOME = { w: 720, h: 270 };
+const SIZE_HOME = { w: 780, h: 470 };
 
 const SIZE_SECAO: Record<string, { w: number; h: number }> = {
   adp: { w: 580, h: 620 },
   sistemas: { w: 460, h: 300 },
   apps: { w: 460, h: 300 },
   lembretes: { w: 480, h: 380 },
+  github: { w: 540, h: 620 },
+  whatsapp: { w: 540, h: 620 },
   _default: { w: 500, h: 420 },
 };
 
 const TEMPO_DORMIR = 5 * 60 * 1000;
 const ULTIMO_MODO_KEY = "lua.apps.ultimoModo";
 const MUDO_KEY = "lua.mudo";
-const ORDEM_CARDS: string[] = ["adp", "sistemas", "apps", "lembretes"];
+const ORDEM_CARDS: string[] = ["adp", "sistemas", "apps", "lembretes", "github", "whatsapp"];
 
 function emojiClima(code: number): string {
   if (code === 0) return "☀️";
@@ -104,6 +113,13 @@ function faseDoDia(h: number): string {
   if (h < 12) return "manhã";
   if (h < 18) return "tarde";
   return "noite";
+}
+
+function saudacao(h: number): string {
+  if (h < 6) return "Boa madrugada";
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 function uptimeBonito(min: number): string {
@@ -131,8 +147,11 @@ function App() {
   const [refreshLembretes, setRefreshLembretes] = useState(0);
 
   const [adpStatus, setAdpStatus] = useState<AdpStatus | null>(null);
+  const [whatsStatus, setWhatsStatus] = useState<WhatsStatus | null>(null);
   const [qtdLembretes, setQtdLembretes] = useState(0);
   const [ultimoModo, setUltimoModo] = useState<string | null>(null);
+  const [nomeUsuario, setNomeUsuario] = useState<string>("");
+  const [loginUsuario, setLoginUsuario] = useState<string>("");
 
   const [mudo, setMudo] = useState(false);
   const [chatMsg, setChatMsg] = useState("");
@@ -231,6 +250,19 @@ function App() {
   useEffect(() => {
     const tick = async () => {
       try {
+        setWhatsStatus(await invoke<WhatsStatus>("whatsapp_status"));
+      } catch {
+        setWhatsStatus(null);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const tick = async () => {
+      try {
         const l = await invoke<Array<{ id: string }>>("listar_lembretes");
         setQtdLembretes(l.length);
       } catch {
@@ -249,6 +281,36 @@ function App() {
     } catch {
       /* ignora */
     }
+  }, []);
+
+  useEffect(() => {
+    const tick = async () => {
+      try {
+        const r = await invoke<{ logado: boolean }>("github_status");
+        if (r.logado) {
+          const p = await invoke<{ login: string; name: string | null }>(
+            "github_perfil"
+          );
+          setNomeUsuario(p.name ?? p.login);
+          setLoginUsuario(p.login);
+        } else {
+          setNomeUsuario("");
+          setLoginUsuario("");
+        }
+      } catch {
+        /* ignora */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 60000);
+
+    const onMudou = () => tick();
+    window.addEventListener("github-mudou", onMudou);
+
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("github-mudou", onMudou);
+    };
   }, []);
 
   useEffect(() => {
@@ -547,10 +609,59 @@ function App() {
             cor: "#ffc07a",
           }
           : { sub: "nenhum" };
+      case "github":
+        return loginUsuario
+          ? { sub: `@${loginUsuario}`, cor: "#7effb0" }
+          : { sub: "não logado", cor: "#888" };
+      case "whatsapp": {
+        if (!whatsStatus) return { sub: "offline", cor: "#666" };
+        if (whatsStatus.conectado) {
+          const nomeExibir = whatsStatus.nome || whatsStatus.numero?.replace("@c.us", "") || "conectado";
+          return { sub: nomeExibir, cor: "#25D366" };
+        }
+        return { sub: whatsStatus.status.toLowerCase(), cor: "#888" };
+      }
       default:
         return { sub: "" };
     }
   };
+
+  const pulso = (() => {
+    if (charState === "critico")
+      return {
+        icone: "🔴",
+        texto: "Sistema em estado crítico",
+        cor: "#ff8888",
+      };
+    if (charState === "alerta")
+      return {
+        icone: "⚠️",
+        texto: "Sistema pedindo atenção",
+        cor: "#ffc07a",
+      };
+    if (adpStatus?.ocupado)
+      return { icone: "⏳", texto: "Bater ponto em andamento", cor: "#7cc8ff" };
+    if (qtdLembretes > 0)
+      return {
+        icone: "📌",
+        texto: `${qtdLembretes} lembrete${qtdLembretes > 1 ? "s" : ""} pendente${qtdLembretes > 1 ? "s" : ""}`,
+        cor: "#ffc07a",
+      };
+    const h = hora.getHours();
+    if (h >= 5 && h < 12)
+      return { icone: "☕", texto: "Bom dia, bora começar?", cor: "#7cc8ff" };
+    if (h >= 12 && h < 14)
+      return { icone: "🍽️", texto: "Hora do almoço", cor: "#ffd75c" };
+    if (h >= 14 && h < 18)
+      return { icone: "💼", texto: "Tarde produtiva", cor: "#7cc8ff" };
+    if (h >= 18 && h < 23)
+      return { icone: "🌙", texto: "Encerrando o dia", cor: "#b9a7ff" };
+    return { icone: "🛌", texto: "Tá na hora de dormir", cor: "#888" };
+  })();
+
+  const saudacaoTexto = nomeUsuario
+    ? `${saudacao(hora.getHours())}, ${nomeUsuario.split(" ")[0]}`
+    : saudacao(hora.getHours());
 
   return (
     <div className={`notch modo-${modo}`}>
@@ -651,16 +762,28 @@ function App() {
 
                   <div className="np-card-lua-topo">
                     <div className="np-card-lua-avatar">
-                      <Character state={charState} size={52} />
+                      <Character state={charState} size={54} />
                     </div>
                     <div className="np-card-lua-info">
-                      <div className="np-card-lua-nome">Lua</div>
+                      <div className="np-card-lua-saudacao">
+                        {saudacaoTexto}
+                      </div>
                       <div className="np-card-lua-status">
-                        {info
-                          ? `${info.hostname} · ${faseDoDia(hora.getHours())}`
-                          : "..."}
+                        {info ? info.hostname : "..."}
                       </div>
                     </div>
+                  </div>
+
+                  <div
+                    className="np-card-lua-pulso"
+                    style={{ color: pulso.cor }}
+                  >
+                    <span className="np-card-lua-pulso-icone">
+                      {pulso.icone}
+                    </span>
+                    <span className="np-card-lua-pulso-texto">
+                      {pulso.texto}
+                    </span>
                   </div>
 
                   {info && (
@@ -702,15 +825,15 @@ function App() {
                   )}
 
                   <div className="np-card-lua-footer">
-                    <span className="np-card-lua-clima">
-                      {info ? info.hostname : "..."}
+                    <span className="np-card-lua-login">
+                      {loginUsuario ? `@${loginUsuario}` : "—"}
                     </span>
                     <span className="np-card-lua-hora">{horaStr}</span>
                   </div>
                 </div>
 
                 <div className="np-home-grid">
-                  {integracoesOrdenadas.slice(0, 4).map((integ, i) => {
+                  {integracoesOrdenadas.slice(0, 6).map((integ, i) => {
                     const infoCard = infoDoCard(integ.id);
                     return (
                       <button
@@ -855,8 +978,16 @@ function App() {
                     <span>{info?.os_nome ?? "—"}</span>
                   </div>
                   <div className="config-row">
-                    <span>Atalhos</span>
-                    <span>ESC = voltar</span>
+                    <span>GitHub</span>
+                    <span>{loginUsuario ? `@${loginUsuario}` : "não logado"}</span>
+                  </div>
+                  <div className="config-row">
+                    <span>WhatsApp</span>
+                    <span>
+                      {whatsStatus?.conectado
+                        ? `✓ ${whatsStatus.nome ?? "conectado"}`
+                        : whatsStatus?.status.toLowerCase() ?? "offline"}
+                    </span>
                   </div>
                 </div>
 

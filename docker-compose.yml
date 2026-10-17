@@ -1,0 +1,23 @@
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: lua-waha
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - WAHA_DASHBOARD_ENABLED=true
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=lua-admin
+      - WHATSAPP_SWAGGER_ENABLED=true
+      - WHATSAPP_SWAGGER_USERNAME=admin
+      - WHATSAPP_SWAGGER_PASSWORD=lua-admin
+      - WHATSAPP_API_KEY=lua-local-dev
+      - WAHA_PRINT_QR=false
+      # ⬇️ Mude o motor para NOWEB
+      - WHATSAPP_DEFAULT_ENGINE=NOWEB
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ./docker-data/waha:/app/.sessions
